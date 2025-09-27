@@ -30,7 +30,7 @@ from diffusers_helper.utils import save_bcthw_as_mp4, crop_or_pad_yield_mask, so
 # The main transformer model for video generation
 from diffusers_helper.models.hunyuan_video_packed import HunyuanVideoTransformer3DModelPacked
 # Sampling pipeline for the diffusion process
-from diffusers_helper.pipelines.k_diffusion_hunyuan import sample_hunyuan
+from diffusers_helper.pipelines.k_diffusion_crack import sample_crack
 # Memory management utilities for handling large models on limited VRAM
 from diffusers_helper.memory import cpu, gpu, get_cuda_free_memory_gb, move_model_to_device_with_memory_preservation, offload_model_from_device_for_memory_preservation, fake_diffusers_current_device, DynamicSwapInstaller, unload_complete_models, load_model_as_complete
 # Asynchronous processing for real-time UI updates
@@ -338,7 +338,7 @@ def worker(input_image, prompt, n_prompt, seed, total_second_length, latent_wind
             clean_latents = torch.cat([start_latent.to(history_latents), clean_latents_1x], dim=2)
 
             # Run the diffusion sampling process
-            generated_latents = sample_hunyuan(
+            generated_latents = sample_crack(
                 transformer=transformer,           # Main video generation model
                 sampler='unipc',                   # Sampling algorithm (UniPC)
                 width=width,                       # Video width
