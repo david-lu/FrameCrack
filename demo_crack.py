@@ -42,7 +42,8 @@ from transformers import SiglipImageProcessor, SiglipVisionModel
 from diffusers_helper.clip_vision import hf_clip_vision_encode
 # Utility for finding optimal image dimensions
 from diffusers_helper.bucket_tools import find_nearest_bucket
-
+# Video to numpy
+from video_helper import video_to_numpy
 
 # Command line argument parser for server configuration
 parser = argparse.ArgumentParser()
@@ -147,6 +148,7 @@ os.makedirs(outputs_folder, exist_ok=True)
 @torch.no_grad()  # Disable gradient computation for inference
 def worker(
     input_image: np.ndarray,
+    input_video: np.ndarray | None,
     prompt: str, 
     n_prompt: str, 
     seed: int, 
@@ -241,6 +243,8 @@ def worker(
         input_image_pt = torch.from_numpy(input_image_np).float() / 127.5 - 1
         input_image_pt = input_image_pt.permute(2, 0, 1)[None, :, None]  # Add batch and time dimensions
 
+        print('IMAGE PT: ', input_image_pt.shape)
+
         # === VAE ENCODING PHASE ===
         # Convert input image to latent space for efficient processing
 
@@ -253,6 +257,21 @@ def worker(
         # Encode input image to latent space
         start_latent = vae_encode(input_image_pt, vae)
         print('IMAGE LATENT: ', start_latent.shape)
+
+        # do the same for the video
+        input_video_np, input_video_pt, video_latent = None, None, None
+        if input_video is not None:
+            VF, VH, VW, VC = input_video.shape
+            height, width = find_nearest_bucket(VH, VW, resolution=640)  # Find closest supported resolution
+            input_video_np = np.stack([resize_and_center_crop(f, target_width=width, target_height=height) for f in input_video], axis=0)
+
+            input_video_pt = torch.from_numpy(input_video_np).float() / 127.5 - 1
+            input_video_pt = input_video_pt.permute(3, 0, 1, 2)[None, :]
+            print('VIDEO PT: ', input_video_pt.shape)
+
+            video_latent = vae_encode(input_video_pt, vae)
+            print('VIDEO LATENT: ', video_latent.shape)
+
 
         # === CLIP VISION ENCODING PHASE ===
         # Extract visual features from input image to guide video generation
@@ -354,13 +373,15 @@ def worker(
             clean_latents_4x, clean_latents_2x, clean_latents_1x = history_latents[:, :, -sum([16, 2, 1]):, :, :].split([16, 2, 1], dim=2)
             clean_latents = torch.cat([start_latent.to(history_latents), clean_latents_1x], dim=2)
 
+            frames = latent_window_size * 4 - 3
+
             # Run the diffusion sampling process
             generated_latents = sample_crack(
                 transformer=transformer,           # Main video generation model
                 sampler='unipc',                   # Sampling algorithm (UniPC)
                 width=width,                       # Video width
                 height=height,                     # Video height
-                frames=latent_window_size * 4 - 3, # Number of frames to generate
+                frames=frames, # Number of frames to generate
                 real_guidance_scale=cfg,           # Classifier-free guidance scale
                 distilled_guidance_scale=gs,       # Distilled guidance scale
                 guidance_rescale=rs,               # Guidance rescale factor
@@ -453,13 +474,16 @@ def worker(
     return
 
 
-def process(input_image, input_video, prompt, n_prompt, seed, total_second_length, latent_window_size, steps, cfg, gs, rs, gpu_memory_preservation, use_teacache, mp4_crf):
+def process(input_image, input_video_path, prompt, n_prompt, seed, total_second_length, latent_window_size, steps, cfg, gs, rs, gpu_memory_preservation, use_teacache, mp4_crf):
     """
     Main processing function called by the Gradio UI.
     Manages the async worker and handles UI updates.
     """
-    print('INPUT VIDEO: ', input_video)
-    
+    print('INPUT VIDEO: ', input_video_path)
+    input_video = video_to_numpy(input_video_path) if input_video_path is not None else None
+    print('INPUT VIDEO: ', input_video.shape)
+    print('INPUT IMAGE: ', input_image.shape)
+
     global stream
     assert input_image is not None, 'No input image!'
 
@@ -470,7 +494,7 @@ def process(input_image, input_video, prompt, n_prompt, seed, total_second_lengt
     stream = AsyncStream()
 
     # Start the worker function asynchronously
-    async_run(worker, input_image, prompt, n_prompt, seed, total_second_length, latent_window_size, steps, cfg, gs, rs, gpu_memory_preservation, use_teacache, mp4_crf)
+    async_run(worker, input_image, input_video, prompt, n_prompt, seed, total_second_length, latent_window_size, steps, cfg, gs, rs, gpu_memory_preservation, use_teacache, mp4_crf)
 
     output_filename = None
 
