@@ -145,7 +145,20 @@ os.makedirs(outputs_folder, exist_ok=True)
 
 
 @torch.no_grad()  # Disable gradient computation for inference
-def worker(input_image, prompt, n_prompt, seed, total_second_length, latent_window_size, steps, cfg, gs, rs, gpu_memory_preservation, use_teacache, mp4_crf):
+def worker(
+    input_image: np.ndarray,
+    prompt: str, 
+    n_prompt: str, 
+    seed: int, 
+    total_second_length: float, 
+    latent_window_size: int, 
+    steps: int, 
+    cfg: float, 
+    gs: float, 
+    rs: float, 
+    gpu_memory_preservation: float, 
+    use_teacache: bool, 
+    mp4_crf: int):
     """
     Main worker function that generates video from input image and text prompt.
     
@@ -440,11 +453,13 @@ def worker(input_image, prompt, n_prompt, seed, total_second_length, latent_wind
     return
 
 
-def process(input_image, prompt, n_prompt, seed, total_second_length, latent_window_size, steps, cfg, gs, rs, gpu_memory_preservation, use_teacache, mp4_crf):
+def process(input_image, input_video, prompt, n_prompt, seed, total_second_length, latent_window_size, steps, cfg, gs, rs, gpu_memory_preservation, use_teacache, mp4_crf):
     """
     Main processing function called by the Gradio UI.
     Manages the async worker and handles UI updates.
     """
+    print('INPUT VIDEO: ', input_video)
+    
     global stream
     assert input_image is not None, 'No input image!'
 
@@ -486,81 +501,83 @@ def end_process():
     stream.input_queue.push('end')
 
 
-# Predefined prompt examples for quick testing
-quick_prompts = [
-    'The girl dances gracefully, with clear movements, full of charm.',
-    'A character doing some simple body movements.',
-]
-quick_prompts = [[x] for x in quick_prompts]  # Format for Gradio Dataset
+if __name__ == '__main__':
+    # Predefined prompt examples for quick testing
+    quick_prompts = [
+        'The girl dances gracefully, with clear movements, full of charm.',
+        'A character doing some simple body movements.',
+    ]
+    quick_prompts = [[x] for x in quick_prompts]  # Format for Gradio Dataset
 
 
-# === GRADIO UI SETUP ===
-# Create the web interface for the video generation system
+    # === GRADIO UI SETUP ===
+    # Create the web interface for the video generation system
 
-css = make_progress_bar_css()  # Custom CSS for progress bars
-block = gr.Blocks(css=css).queue()  # Create Gradio interface with queue for async processing
-with block:
-    gr.Markdown('# FramePack-F1')  # Title
-    with gr.Row():
-        with gr.Column():
-            # Input image upload
-            input_image = gr.Image(sources='upload', type="numpy", label="Image", height=320)
-            # Text prompt input
-            prompt = gr.Textbox(label="Prompt", value='')
-            # Quick prompt examples
-            example_quick_prompts = gr.Dataset(samples=quick_prompts, label='Quick List', samples_per_page=1000, components=[prompt])
-            example_quick_prompts.click(lambda x: x[0], inputs=[example_quick_prompts], outputs=prompt, show_progress=False, queue=False)
+    css = make_progress_bar_css()  # Custom CSS for progress bars
+    block = gr.Blocks(css=css).queue()  # Create Gradio interface with queue for async processing
+    with block:
+        gr.Markdown('# Crack')  # Title
+        with gr.Row():
+            with gr.Column():
+                # Input image upload
+                input_image = gr.Image(sources='upload', type="numpy", label="Image", height=320)
+                # Input video upload
+                input_video = gr.Video(sources='upload', format='mp4', label="Video", height=320)
+                # Text prompt input
+                prompt = gr.Textbox(label="Prompt", value='')
+                # Quick prompt examples
+                example_quick_prompts = gr.Dataset(samples=quick_prompts, label='Quick List', samples_per_page=1000, components=[prompt])
+                example_quick_prompts.click(lambda x: x[0], inputs=[example_quick_prompts], outputs=prompt, show_progress=False, queue=False)
 
-            with gr.Row():
-                # Control buttons
-                start_button = gr.Button(value="Start Generation")
-                end_button = gr.Button(value="End Generation", interactive=False)
+                with gr.Row():
+                    # Control buttons
+                    start_button = gr.Button(value="Start Generation")
+                    end_button = gr.Button(value="End Generation", interactive=False)
 
-            with gr.Group():
-                # Generation parameters
-                use_teacache = gr.Checkbox(label='Use TeaCache', value=True, info='Faster speed, but often makes hands and fingers slightly worse.')
+                with gr.Group():
+                    # Generation parameters
+                    use_teacache = gr.Checkbox(label='Use TeaCache', value=True, info='Faster speed, but often makes hands and fingers slightly worse.')
 
-                n_prompt = gr.Textbox(label="Negative Prompt", value="", visible=False)  # Not used in this implementation
-                seed = gr.Number(label="Seed", value=31337, precision=0)  # Random seed for reproducibility
+                    n_prompt = gr.Textbox(label="Negative Prompt", value="", visible=False)  # Not used in this implementation
+                    seed = gr.Number(label="Seed", value=31337, precision=0)  # Random seed for reproducibility
 
-                # Video length control
-                total_second_length = gr.Slider(label="Total Video Length (Seconds)", minimum=1, maximum=120, value=5, step=0.1)
-                latent_window_size = gr.Slider(label="Latent Window Size", minimum=1, maximum=33, value=9, step=1, visible=False)  # Should not change
+                    # Video length control
+                    total_second_length = gr.Slider(label="Total Video Length (Seconds)", minimum=1, maximum=120, value=5, step=0.1)
+                    latent_window_size = gr.Slider(label="Latent Window Size", minimum=1, maximum=33, value=9, step=1, visible=False)  # Should not change
 
-                # Sampling parameters
-                steps = gr.Slider(label="Steps", minimum=1, maximum=100, value=25, step=1, info='Changing this value is not recommended.')
+                    # Sampling parameters
+                    steps = gr.Slider(label="Steps", minimum=1, maximum=100, value=25, step=1, info='Changing this value is not recommended.')
 
-                # Guidance parameters
-                cfg = gr.Slider(label="CFG Scale", minimum=1.0, maximum=32.0, value=1.0, step=0.01, visible=False)  # Should not change
-                gs = gr.Slider(label="Distilled CFG Scale", minimum=1.0, maximum=32.0, value=10.0, step=0.01, info='Changing this value is not recommended.')
-                rs = gr.Slider(label="CFG Re-Scale", minimum=0.0, maximum=1.0, value=0.0, step=0.01, visible=False)  # Should not change
+                    # Guidance parameters
+                    cfg = gr.Slider(label="CFG Scale", minimum=1.0, maximum=32.0, value=1.0, step=0.01, visible=False)  # Should not change
+                    gs = gr.Slider(label="Distilled CFG Scale", minimum=1.0, maximum=32.0, value=10.0, step=0.01, info='Changing this value is not recommended.')
+                    rs = gr.Slider(label="CFG Re-Scale", minimum=0.0, maximum=1.0, value=0.0, step=0.01, visible=False)  # Should not change
 
-                # Memory management
-                gpu_memory_preservation = gr.Slider(label="GPU Inference Preserved Memory (GB) (larger means slower)", minimum=6, maximum=128, value=6, step=0.1, info="Set this number to a larger value if you encounter OOM. Larger value causes slower speed.")
+                    # Memory management
+                    gpu_memory_preservation = gr.Slider(label="GPU Inference Preserved Memory (GB) (larger means slower)", minimum=6, maximum=128, value=6, step=0.1, info="Set this number to a larger value if you encounter OOM. Larger value causes slower speed.")
 
-                # Output quality
-                mp4_crf = gr.Slider(label="MP4 Compression", minimum=0, maximum=100, value=16, step=1, info="Lower means better quality. 0 is uncompressed. Change to 16 if you get black outputs. ")
+                    # Output quality
+                    mp4_crf = gr.Slider(label="MP4 Compression", minimum=0, maximum=100, value=16, step=1, info="Lower means better quality. 0 is uncompressed. Change to 16 if you get black outputs. ")
 
-        with gr.Column():
-            # Output displays
-            preview_image = gr.Image(label="Next Latents", height=200, visible=False)  # Real-time preview during generation
-            result_video = gr.Video(label="Finished Frames", autoplay=True, show_share_button=False, height=512, loop=True)  # Final video output
-            progress_desc = gr.Markdown('', elem_classes='no-generating-animation')  # Progress description
-            progress_bar = gr.HTML('', elem_classes='no-generating-animation')  # Progress bar
+            with gr.Column():
+                # Output displays
+                preview_image = gr.Image(label="Next Latents", height=200, visible=False)  # Real-time preview during generation
+                result_video = gr.Video(label="Finished Frames", autoplay=True, show_share_button=False, height=512, loop=True)  # Final video output
+                progress_desc = gr.Markdown('', elem_classes='no-generating-animation')  # Progress description
+                progress_bar = gr.HTML('', elem_classes='no-generating-animation')  # Progress bar
 
-    # Social media link
-    gr.HTML('<div style="text-align:center; margin-top:20px;">Share your results and find ideas at the <a href="https://x.com/search?q=framepack&f=live" target="_blank">FramePack Twitter (X) thread</a></div>')
+        # Social media link
+        gr.HTML('<div style="text-align:center; margin-top:20px;">Share your results and find ideas at the <a href="https://x.com/search?q=framepack&f=live" target="_blank">FramePack Twitter (X) thread</a></div>')
 
-    # Connect UI elements to functions
-    ips = [input_image, prompt, n_prompt, seed, total_second_length, latent_window_size, steps, cfg, gs, rs, gpu_memory_preservation, use_teacache, mp4_crf]
-    start_button.click(fn=process, inputs=ips, outputs=[result_video, preview_image, progress_desc, progress_bar, start_button, end_button])
-    end_button.click(fn=end_process)
+        # Connect UI elements to functions
+        ips = [input_image, input_video, prompt, n_prompt, seed, total_second_length, latent_window_size, steps, cfg, gs, rs, gpu_memory_preservation, use_teacache, mp4_crf]
+        start_button.click(fn=process, inputs=ips, outputs=[result_video, preview_image, progress_desc, progress_bar, start_button, end_button])
+        end_button.click(fn=end_process)
 
-
-# Launch the web interface
-block.launch(
-    server_name=args.server,
-    server_port=args.port,
-    share=args.share,
-    inbrowser=args.inbrowser,
-)
+    # Launch the web interface
+    block.launch(
+        server_name=args.server,
+        server_port=args.port,
+        share=args.share,
+        inbrowser=args.inbrowser,
+    )
