@@ -31,6 +31,7 @@ def sample_crack(
         initial_latent=None,
         concat_latent=None,
         strength=1.0,
+        noise_strength=None,
         width=512,
         height=512,
         frames=16,
@@ -76,14 +77,17 @@ def sample_crack(
     k_model = fm_wrapper(transformer)
 
     if initial_latent is not None:
-        sigmas = sigmas * strength
+        if noise_strength is None:
+            noise_strength = strength
+        sigmas = sigmas * noise_strength
         first_sigma = sigmas[0].to(device=device, dtype=torch.float32)
         initial_latent = initial_latent.to(device=device, dtype=torch.float32)
         latents = initial_latent.float() * (1.0 - first_sigma) + latents.float() * first_sigma
+        latents = latents.to(device=device, dtype=torch.float32)
 
     if concat_latent is not None:
         concat_latent = concat_latent.to(latents)
-        
+
     print('DENOISING LATENTS: ', latents.shape)
 
     distilled_guidance = torch.tensor([distilled_guidance_scale * 1000.0] * batch_size).to(device=device, dtype=dtype)

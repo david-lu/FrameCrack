@@ -25,10 +25,19 @@ def video_to_numpy(video_path: str, max_frames: Optional[int] = None) -> np.ndar
         ret, frame = cap.read()
         if not ret:
             break
-        frames.append(frame)
+        rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        frames.append(rgb)
         
         if max_frames and len(frames) >= max_frames:
             break
     
     cap.release()
     return np.array(frames)
+
+def resize_video(video: np.ndarray, new_h: int, new_w: int) -> np.ndarray:
+    F = video.shape[0]
+    out = np.empty((F, new_h, new_w, video.shape[3]), dtype=video.dtype)
+    interp = cv2.INTER_CUBIC if (new_h > video.shape[1] or new_w > video.shape[2]) else cv2.INTER_AREA
+    for i in range(F):
+        out[i] = cv2.resize(video[i], (new_w, new_h), interpolation=interp)  # note: (w, h)
+    return out

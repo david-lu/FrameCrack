@@ -43,7 +43,7 @@ from diffusers_helper.clip_vision import hf_clip_vision_encode
 # Utility for finding optimal image dimensions
 from diffusers_helper.bucket_tools import find_nearest_bucket
 # Video to numpy
-from video_helper import video_to_numpy
+from video_helper import resize_video, video_to_numpy
 
 # Command line argument parser for server configuration
 parser = argparse.ArgumentParser()
@@ -263,6 +263,7 @@ def worker(
         if input_video is not None:
             # DENOISING LATENTS:  torch.Size([1, 16, 9, 60, 104])
             input_video = input_video[::2]
+            input_video = resize_video(input_video, new_h=height, new_w=width)
             VF, VH, VW, VC = input_video.shape
             video_height, video_width = find_nearest_bucket(VH, VW, resolution=640)  # Find closest supported resolution
             input_video_np = np.stack([resize_and_center_crop(f, target_width=video_width, target_height=video_height) for f in input_video], axis=0)
@@ -323,7 +324,6 @@ def worker(
 
         # Generate video in sections to handle long sequences
         for section_index in range(total_latent_sections):
-
             # total_generated_latent_frames = (section_index * latent_window_size) + 1
             # Check if user wants to stop generation
             if stream.input_queue.top() == 'end':
@@ -385,6 +385,13 @@ def worker(
             print('LATENT WINDOW SIZE: ', latent_window_size)
             print('FRAMES: ', frames)
 
+            video_latent_to_denoise = None
+            if video_latent is not None:
+                start_index = section_index * latent_window_size
+                end_index = start_index + latent_window_size
+                video_latent_to_denoise = video_latent[:, :, start_index: end_index, :, :] if input_video is not None else None
+                print('VIDEO LATENT TO DENOISE: ', video_latent_to_denoise.shape)
+
             # Run the diffusion sampling process
             generated_latents = sample_crack(
                 transformer=transformer,           # Main video generation model
@@ -397,6 +404,12 @@ def worker(
                 guidance_rescale=rs,               # Guidance rescale factor
                 num_inference_steps=steps,         # Number of diffusion steps
                 generator=rnd,                     # Random number generator
+
+                # THIS IS REALLY IMPORTANT THIS IS VIDEO 2 VIDEO
+                initial_latent=video_latent_to_denoise,
+                strength=0.95,
+                noise_strength=0.9,
+
                 # Text embeddings
                 prompt_embeds=llama_vec,
                 prompt_embeds_mask=llama_attention_mask,
