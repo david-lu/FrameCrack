@@ -83,6 +83,8 @@ def sample_crack(
 
     if concat_latent is not None:
         concat_latent = concat_latent.to(latents)
+        
+    print('DENOISING LATENTS: ', latents.shape)
 
     distilled_guidance = torch.tensor([distilled_guidance_scale * 1000.0] * batch_size).to(device=device, dtype=dtype)
 

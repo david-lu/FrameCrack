@@ -262,8 +262,8 @@ def worker(
         input_video_np, input_video_pt, video_latent = None, None, None
         if input_video is not None:
             VF, VH, VW, VC = input_video.shape
-            height, width = find_nearest_bucket(VH, VW, resolution=640)  # Find closest supported resolution
-            input_video_np = np.stack([resize_and_center_crop(f, target_width=width, target_height=height) for f in input_video], axis=0)
+            video_height, video_width = find_nearest_bucket(VH, VW, resolution=640)  # Find closest supported resolution
+            input_video_np = np.stack([resize_and_center_crop(f, target_width=video_width, target_height=video_height) for f in input_video], axis=0)
 
             input_video_pt = torch.from_numpy(input_video_np).float() / 127.5 - 1
             input_video_pt = input_video_pt.permute(3, 0, 1, 2)[None, :]
@@ -374,6 +374,7 @@ def worker(
             clean_latents = torch.cat([start_latent.to(history_latents), clean_latents_1x], dim=2)
 
             frames = latent_window_size * 4 - 3
+            print('FRAMES: ', frames)
 
             # Run the diffusion sampling process
             generated_latents = sample_crack(
@@ -481,7 +482,8 @@ def process(input_image, input_video_path, prompt, n_prompt, seed, total_second_
     """
     print('INPUT VIDEO: ', input_video_path)
     input_video = video_to_numpy(input_video_path) if input_video_path is not None else None
-    print('INPUT VIDEO: ', input_video.shape)
+    if input_video is not None:
+        print('INPUT VIDEO: ', input_video.shape)
     print('INPUT IMAGE: ', input_image.shape)
 
     global stream
