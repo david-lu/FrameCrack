@@ -239,6 +239,7 @@ def worker(input_image, prompt, n_prompt, seed, total_second_length, latent_wind
 
         # Encode input image to latent space
         start_latent = vae_encode(input_image_pt, vae)
+        print('IMAGE LATENT: ', start_latent.shape)
 
         # === CLIP VISION ENCODING PHASE ===
         # Extract visual features from input image to guide video generation
@@ -272,8 +273,11 @@ def worker(input_image, prompt, n_prompt, seed, total_second_length, latent_wind
 
         # Initialize history buffers for temporal consistency
         # The model uses previous frames to maintain temporal coherence
+        # Initially set to all zeros
         history_latents = torch.zeros(size=(1, 16, 16 + 2 + 1, height // 8, width // 8), dtype=torch.float32).cpu()
         history_pixels = None
+
+        print('HISTORY LATENTS: ', history_latents.shape)
 
         # Add the starting latent to history
         history_latents = torch.cat([history_latents, start_latent.to(history_latents)], dim=2)
@@ -371,9 +375,13 @@ def worker(input_image, prompt, n_prompt, seed, total_second_length, latent_wind
                 callback=callback,                 # Progress callback
             )
 
+            print('GENERATED LATENTS: ', generated_latents.shape)
+
             # Update history with newly generated latents
             total_generated_latent_frames += int(generated_latents.shape[2])
             history_latents = torch.cat([history_latents, generated_latents.to(history_latents)], dim=2)
+
+            print(section_index, 'HISTORY LATENT: ', history_latents.shape)
 
             # === VAE DECODING PHASE ===
             # Convert generated latents back to pixel space
@@ -384,7 +392,10 @@ def worker(input_image, prompt, n_prompt, seed, total_second_length, latent_wind
                 load_model_as_complete(vae, target_device=gpu)
 
             # Get the current history of latents
+            # This is all history with the original zeros removed
             real_history_latents = history_latents[:, :, -total_generated_latent_frames:, :, :]
+
+            print('REAL HISTORY LATENTS: ', real_history_latents.shape)
 
             # Decode latents to pixels
             if history_pixels is None:
@@ -398,6 +409,8 @@ def worker(input_image, prompt, n_prompt, seed, total_second_length, latent_wind
                 current_pixels = vae_decode(real_history_latents[:, :, -section_latent_frames:], vae).cpu()
                 # Soft append with overlap to maintain temporal smoothness
                 history_pixels = soft_append_bcthw(history_pixels, current_pixels, overlapped_frames)
+
+            print('HISTORY PIXELS: ', history_pixels.shape)
 
             # Clean up GPU memory
             if not high_vram:
