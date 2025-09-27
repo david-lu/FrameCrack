@@ -261,6 +261,8 @@ def worker(
         # do the same for the video
         input_video_np, input_video_pt, video_latent = None, None, None
         if input_video is not None:
+            # DENOISING LATENTS:  torch.Size([1, 16, 9, 60, 104])
+            input_video = input_video[::2]
             VF, VH, VW, VC = input_video.shape
             video_height, video_width = find_nearest_bucket(VH, VW, resolution=640)  # Find closest supported resolution
             input_video_np = np.stack([resize_and_center_crop(f, target_width=video_width, target_height=video_height) for f in input_video], axis=0)
@@ -272,6 +274,10 @@ def worker(
             video_latent = vae_encode(input_video_pt, vae)
             print('VIDEO LATENT: ', video_latent.shape)
 
+            total_latent_sections = VF / (latent_window_size * 4)
+            total_latent_sections = int(max(round(total_latent_sections), 1))
+
+        print('TOTAL LATENT SECTIONS: ', total_latent_sections)
 
         # === CLIP VISION ENCODING PHASE ===
         # Extract visual features from input image to guide video generation
@@ -317,6 +323,8 @@ def worker(
 
         # Generate video in sections to handle long sequences
         for section_index in range(total_latent_sections):
+
+            # total_generated_latent_frames = (section_index * latent_window_size) + 1
             # Check if user wants to stop generation
             if stream.input_queue.top() == 'end':
                 stream.output_queue.push(('end', None))
@@ -374,6 +382,7 @@ def worker(
             clean_latents = torch.cat([start_latent.to(history_latents), clean_latents_1x], dim=2)
 
             frames = latent_window_size * 4 - 3
+            print('LATENT WINDOW SIZE: ', latent_window_size)
             print('FRAMES: ', frames)
 
             # Run the diffusion sampling process
@@ -417,6 +426,7 @@ def worker(
             history_latents = torch.cat([history_latents, generated_latents.to(history_latents)], dim=2)
 
             print(section_index, 'HISTORY LATENT: ', history_latents.shape)
+            print('total_generated_latent_frames: ', total_generated_latent_frames)
 
             # === VAE DECODING PHASE ===
             # Convert generated latents back to pixel space
