@@ -2,9 +2,9 @@ import cv2
 import numpy as np
 from typing import Optional
 
-from video_helper.blur import gaussian_blur, surface_blur_cv
+from video_helper.cv import canny_edge_detect_cv, surface_blur_cv
 from video_helper.kuwahara import kuwahara_fast
-from video_helper.color import enhance_color
+# from video_helper.color import enhance_color
 
 
 def video_to_numpy(video_path: str, max_frames: Optional[int] = None) -> np.ndarray:
@@ -61,10 +61,17 @@ def anime_frame(frame: np.ndarray) -> np.ndarray:
 
     # frame = enhance_color(frame, 1.5)
     # img = get_heatmap(img, cv2.COLORMAP_AUTUMN, 0.15)
+    line = canny_edge_detect_cv(frame, 100, 200)
+    line = cv2.divide(cv2.subtract(255, line), 255)
+    # line = cv2.blur(line, 1)
+    
+    # Convert 2D edge map to 3D to match frame dimensions
+    line = np.stack([line, line, line], axis=-1)
+
     frame = surface_blur_cv(frame, 15, 64, 65)
 
     frame = kuwahara_fast(frame, 8)
     # frame = surface_blur(frame, 5, 64, 65)
-    # frame = gaussian_blur(frame, 2)
+    frame = cv2.multiply(frame, line)
 
     return frame
