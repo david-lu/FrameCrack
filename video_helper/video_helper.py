@@ -2,6 +2,10 @@ import cv2
 import numpy as np
 from typing import Optional
 
+from video_helper.blur import gaussian_blur, surface_blur_cv
+from video_helper.kuwahara import kuwahara_fast
+from video_helper.color import enhance_color
+
 
 def video_to_numpy(video_path: str, max_frames: Optional[int] = None) -> np.ndarray:
     """
@@ -41,3 +45,26 @@ def resize_video(video: np.ndarray, new_h: int, new_w: int) -> np.ndarray:
     for i in range(F):
         out[i] = cv2.resize(video[i], (new_w, new_h), interpolation=interp)  # note: (w, h)
     return out
+
+
+def anime_video(video: np.ndarray) -> np.ndarray:
+    out = np.empty(video.shape, dtype=video.dtype)
+    for i in range(video.shape[0]):
+        out[i] = anime_frame(video[i])
+    return out
+
+
+def anime_frame(frame: np.ndarray) -> np.ndarray:
+    """
+    Anime video by resizing and interpolating.
+    """
+
+    # frame = enhance_color(frame, 1.5)
+    # img = get_heatmap(img, cv2.COLORMAP_AUTUMN, 0.15)
+    frame = surface_blur_cv(frame, 15, 64, 65)
+
+    frame = kuwahara_fast(frame, 8)
+    # frame = surface_blur(frame, 5, 64, 65)
+    # frame = gaussian_blur(frame, 2)
+
+    return frame
